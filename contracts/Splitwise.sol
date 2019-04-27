@@ -23,6 +23,9 @@ contract Splitwise {
   mapping(uint256 => Group) private groups;
 
   function registerGroupProposal(address[] calldata participants) external {
+    require(participants.length >= 2);
+    require(participants.length <= 50);
+
     uint256 groupProposalId = idCounter++;
     for(uint8 i = 0; i < participants.length; i++){
       if(!groupProposals[groupProposalId].addressLedger[participants[i]]){
@@ -34,8 +37,6 @@ contract Splitwise {
     groupProposals[groupProposalId].isRejected = false;
     groupProposals[groupProposalId].isApproved = false;
 
-    require(groupProposals[groupProposalId].participants.length >= 2);
-    require(groupProposals[groupProposalId].participants.length <= 50);
     emit GroupProposalSubmitted(groupProposalId, groupProposals[groupProposalId].participants);
   }
 
