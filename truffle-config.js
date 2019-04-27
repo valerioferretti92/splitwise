@@ -29,7 +29,7 @@ module.exports = {
     ganache: { // Whatever network our local node connects to
       network_id: "5777",
       host: "localhost",
-      port: 7545,
+      port: 7545
     }
   },
   compilers: {
