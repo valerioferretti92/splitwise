@@ -38,13 +38,14 @@ contract Splitwise {
     (id, proposedParticipants, confirmations, cancellations, isGroupCreated, isGroupProposalCancelled)
       = swGroup.submitUserParticipation(groupProposalId, confirmation);
 
+    if(!confirmation) userGroupProposals[msg.sender] = removeGroupByIndex(index, userGroupProposals[msg.sender]);
     if(!isGroupCreated && !isGroupProposalCancelled) {
-      if(!confirmation) userGroupProposals[msg.sender] = removeGroupByIndex(index, userGroupProposals[msg.sender]);
       emit UserParticipantionRegistered(id, proposedParticipants, confirmations, cancellations);
     }else if(!isGroupCreated && isGroupProposalCancelled) {
       deleteGroupProposal(id, proposedParticipants);
       emit GroupProposalDeleted(id, proposedParticipants, confirmations, cancellations);
     }else if(isGroupCreated && !isGroupProposalCancelled){
+      deleteGroupProposal(id, proposedParticipants);
       registerNewGroup(id, confirmations);
       emit GroupCreated(id, proposedParticipants, confirmations, cancellations);
     }else revert();
@@ -80,8 +81,8 @@ contract Splitwise {
 
   function getGroupProposal(uint256 groupProposalId) external view
     returns (string memory, address[] memory, address[] memory, address[] memory){
-    uint8 index = getGroupIndex(groupProposalId, userGroups[msg.sender]);
-    require(index < userGroups[msg.sender].length, "The specified group proposal is not associated to msg.sender");
+    uint8 index = getGroupIndex(groupProposalId, userGroupProposals[msg.sender]);
+    require(index < userGroupProposals[msg.sender].length, "The specified group proposal is not associated to msg.sender");
     return swGroup.getGroupProposal(groupProposalId);
   }
 
@@ -91,8 +92,9 @@ contract Splitwise {
     uint8 index;
 
     for(uint8 i = 0; i < users.length; i++){
-      index = getGroupIndex(groupProposalId, userGroups[users[i]]);
-      userGroups[users[i]] = removeGroupByIndex(index, userGroups[users[i]]);
+      index = getGroupIndex(groupProposalId, userGroupProposals[users[i]]);
+      if(index < userGroupProposals[users[i]])
+        userGroupProposals[users[i]] = removeGroupByIndex(index, userGroupProposals[users[i]]);
     }
   }
 

@@ -16,6 +16,7 @@ contract SplitwiseGroup {
     address[] proposedParticipants;
     address[] confirmations;
     address[] cancellations;
+    mapping(address => bool) voteLedger;
     bool isRejected;
     bool isApproved;
   }
@@ -61,10 +62,10 @@ contract SplitwiseGroup {
     //Checking that group proposal has not been discarded or transformed into a group already
     require(!groupProposals[groupProposalId].isRejected, "Already rejected group proposal");
     require(!groupProposals[groupProposalId].isApproved, "Already approved group proposal");
+    require(!groupProposals[groupProposalId].voteLedger[tx.origin], "Double voting is not allowed");
 
     //Registering confirmation or cancellation
-    if(confirmation) return registerParticipantConfirmation(groupProposalId);
-    if(!confirmation) return registerParticipantCancellation(groupProposalId);
+    return registerUserParticipation(groupProposalId, confirmation);
   }
 
   function deleteGroup(uint256 groupId) external returns(address[] memory){
@@ -73,6 +74,8 @@ contract SplitwiseGroup {
 
     return groups[groupId].participants;
   }
+
+  /*************** GETTER FUNCTIONS ****************/
 
   function getGroup(uint256 groupId) external view returns(string memory, address[] memory) {
     bool isDeleted = groups[groupId].isDeleted;
@@ -95,27 +98,13 @@ contract SplitwiseGroup {
     }
   }
 
-  function registerParticipantConfirmation(uint256 id) private
+  function registerUserParticipation(uint256 id, bool confirmation) private
     returns(uint256, address[] memory, address[] memory, address[] memory, bool, bool){
-    groupProposals[id].confirmations.push(tx.origin);
+    if(confirmation) groupProposals[id].confirmations.push(tx.origin);
+    if(!confirmation) groupProposals[id].cancellations.push(tx.origin);
+    groupProposals[id].voteLedger[tx.origin] = true;
 
     //Checking wheater it is necessary to create a new group
-    bool isGroupCreated = false;
-    bool isGroupProposalCancelled = false;
-    GroupProposal memory gp = groupProposals[id];
-    if(gp.confirmations.length + gp.cancellations.length == gp.proposedParticipants.length){
-      registerNewGroup(id, gp.confirmations, gp.title);
-      isGroupCreated =  true;
-      isGroupProposalCancelled = false;
-    }
-    return (id, gp.proposedParticipants, gp.confirmations, gp.cancellations, isGroupCreated, isGroupProposalCancelled);
-  }
-
-  function registerParticipantCancellation(uint256 id) private
-    returns(uint256, address[] memory, address[] memory, address[] memory, bool, bool){
-    groupProposals[id].cancellations.push(tx.origin);
-
-    //Checking wheater it is necessary to delete the group proposal
     bool isGroupCreated = false;
     bool isGroupProposalCancelled = false;
     GroupProposal memory gp = groupProposals[id];
@@ -123,6 +112,10 @@ contract SplitwiseGroup {
       deleteGroupProposal(id);
       isGroupCreated =  false;
       isGroupProposalCancelled = true;
+    }else if(gp.confirmations.length + gp.cancellations.length == gp.proposedParticipants.length){
+      registerNewGroup(id, gp.confirmations, gp.title);
+      isGroupCreated =  true;
+      isGroupProposalCancelled = false;
     }
     return (id, gp.proposedParticipants, gp.confirmations, gp.cancellations, isGroupCreated, isGroupProposalCancelled);
   }
