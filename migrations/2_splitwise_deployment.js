@@ -1,5 +1,5 @@
-const Splitwise = artifacts.require("Splitwise");
+const SplitwiseGroup = artifacts.require("SplitwiseGroup");
 
 module.exports = function(deployer) {
-  deployer.deploy(Splitwise);
+  deployer.deploy(SplitwiseGroup);
 };

@@ -1,110 +1,136 @@
 pragma solidity ^0.5.0;
 
+import "./SplitwiseGroup.sol";
+
 contract Splitwise {
 
-  uint256 private idCounter = 1;
+  SplitwiseGroup swGroup;
 
-  struct Group {
-    address[] participants;
-    mapping(address => mapping(address => uint256)) balances;
-    bool isSettledUp;
+  mapping(address => uint256[]) userGroups;
+  mapping(address => uint256[]) userGroupProposals;
+
+  constructor(address splitwiseGroupAddress) public {
+    swGroup = SplitwiseGroup(splitwiseGroupAddress);
   }
 
-  struct GroupProposal {
-    address[] participants;
-    mapping(address => bool) confirmations;
-    mapping(address => bool) addressLedger;
-    bool isRejected;
-    bool isApproved;
+  function registerGroupProposal(string calldata title, address[] calldata desiredParticipants) external {
+    uint256 groupProposalId;
+    address[] memory participants;
+
+    (groupProposalId, participants) = swGroup.registerGroupProposal(title, desiredParticipants);
+    for(uint8 i = 0; i < participants.length; i++)
+      userGroupProposals[participants[i]].push(groupProposalId);
+
+    emit GroupProposalSubmitted(groupProposalId, participants);
   }
 
-  mapping(uint256 => GroupProposal) private groupProposals;
+  function submitUserParticipation(uint256 groupProposalId, bool confirmation) external {
+    uint256 id;
+    address[] memory proposedParticipants;
+    address[] memory confirmations;
+    address[] memory cancellations;
+    bool isGroupCreated;
+    bool isGroupProposalCancelled;
 
-  mapping(uint256 => Group) private groups;
+    uint8 index = getGroupIndex(groupProposalId, userGroupProposals[msg.sender]);
+    require(index < userGroupProposals[msg.sender].length, "Not a group participant");
 
-  function registerGroupProposal(address[] calldata participants) external {
-    require(participants.length >= 2);
-    require(participants.length <= 50);
+    (id, proposedParticipants, confirmations, cancellations, isGroupCreated, isGroupProposalCancelled)
+      = swGroup.submitUserParticipation(groupProposalId, confirmation);
 
-    uint256 groupProposalId = idCounter++;
+    if(!isGroupCreated && !isGroupProposalCancelled) {
+      if(!confirmation) userGroupProposals[msg.sender] = removeGroupByIndex(index, userGroupProposals[msg.sender]);
+      emit UserParticipantionRegistered(id, proposedParticipants, confirmations, cancellations);
+    }else if(!isGroupCreated && isGroupProposalCancelled) {
+      deleteGroupProposal(id, proposedParticipants);
+      emit GroupProposalDeleted(id, proposedParticipants, confirmations, cancellations);
+    }else if(isGroupCreated && !isGroupProposalCancelled){
+      registerNewGroup(id, confirmations);
+      emit GroupCreated(id, proposedParticipants, confirmations, cancellations);
+    }else revert();
+  }
+
+  function deleteGroup(uint256 groupId) external {
+    uint8 index = getGroupIndex(groupId, userGroupProposals[msg.sender]);
+    require(index < userGroupProposals[msg.sender].length, "Not a group participant");
+
+    address[] memory participants = swGroup.deleteGroup(groupId);
     for(uint8 i = 0; i < participants.length; i++){
-      if(!groupProposals[groupProposalId].addressLedger[participants[i]]){
-        groupProposals[groupProposalId].participants.push(participants[i]);
-        groupProposals[groupProposalId].addressLedger[participants[i]] = true;
-        groupProposals[groupProposalId].confirmations[participants[i]] = false;
-      }
+      index = getGroupIndex(groupId, userGroupProposals[participants[i]]);
+      userGroupProposals[participants[i]] = removeGroupByIndex(index, userGroupProposals[participants[i]]);
     }
-    groupProposals[groupProposalId].isRejected = false;
-    groupProposals[groupProposalId].isApproved = false;
-
-    emit GroupProposalSubmitted(groupProposalId, groupProposals[groupProposalId].participants);
+    emit GroupDeleted(groupId, participants);
   }
 
-  function registerGroupConfirmation(uint256 groupId, bool confirmation) external {
-    //Checking that group proposal has not been discarded or transformed into a group already
-    require(!groupProposals[groupId].isRejected, "Already rejected group proposal");
-    require(!groupProposals[groupId].isApproved, "Already approved group proposal");
+  /*************** GETTER FUNCTIONS ****************/
 
-    //Checking that sender is an invited group participant
-    uint8 index = getParticipantIndex(groupProposals[groupId].participants, msg.sender);
-    require(index < groupProposals[groupId].participants.length, "Not a group participant");
+  function getUserGroups() external view returns(uint256[] memory){
+    return userGroups[msg.sender];
+  }
 
-    //Checking whether sender does not intend to be part of the group
-    if(!confirmation) {
-      groupProposals[groupId].participants = removeParticipantByIndex(groupProposals[groupId].participants, index);
-      groupProposals[groupId].confirmations[msg.sender] = false;
-      emit GroupConfirmationRegistered(groupId, msg.sender);
-      if(groupProposals[groupId].participants.length < 2){
-        groupProposals[groupId].isRejected = true;
-        emit GroupProposalDeleted(groupId);
-      }
-      return;
-    }
-    groupProposals[groupId].confirmations[msg.sender] = true;
-    emit GroupConfirmationRegistered(groupId, msg.sender);
+  function getGroup(uint256 groupId) external view returns(string memory, address[] memory){
+    uint8 index = getGroupIndex(groupId, userGroups[msg.sender]);
+    require(index < userGroups[msg.sender].length, "The specified group is not associated to msg.sender");
+    return swGroup.getGroup(groupId);
+  }
 
-    //Checking wheater it is necessary to create a new group
-    if(getGroupProposalConfirmationCount(groupProposals[groupId]) == groupProposals[groupId].participants.length){
-      groups[groupId].participants = groupProposals[groupId].participants;
-      groups[groupId].isSettledUp = true;
-      groupProposals[groupId].isApproved = true;
-      emit GroupCreated(groupId, groups[groupId].participants);
+  function getUserGroupProposals() external view returns(uint256[] memory){
+    return userGroupProposals[msg.sender];
+  }
+
+  function getGroupProposal(uint256 groupProposalId) external view
+    returns (string memory, address[] memory, address[] memory, address[] memory){
+    uint8 index = getGroupIndex(groupProposalId, userGroups[msg.sender]);
+    require(index < userGroups[msg.sender].length, "The specified group proposal is not associated to msg.sender");
+    return swGroup.getGroupProposal(groupProposalId);
+  }
+
+  /*************** PRIVATE FUNCTIONS ****************/
+
+  function deleteGroupProposal(uint256 groupProposalId, address[] memory users) private {
+    uint8 index;
+
+    for(uint8 i = 0; i < users.length; i++){
+      index = getGroupIndex(groupProposalId, userGroups[users[i]]);
+      userGroups[users[i]] = removeGroupByIndex(index, userGroups[users[i]]);
     }
   }
 
-  function getGroupProposalConfirmationCount(GroupProposal storage groupProposal) private view returns(uint8){
-    uint8 counter = 0;
-    for(uint8 i = 0; i < groupProposal.participants.length; i++){
-      address participant = groupProposal.participants[i];
-      if(groupProposal.confirmations[participant]) counter++;
+  function registerNewGroup(uint256 groupId, address[] memory users) private {
+    for(uint8 i = 0; i < users.length; i++){
+      userGroups[users[i]].push(groupId);
     }
-    return counter;
   }
 
-  function getParticipantIndex(address[] memory participants, address sender) private pure returns(uint8){
-    for(uint8 i = 0; i < participants.length; i++){
-      if(sender == participants[i]) return i;
+  /*************** EVENTS ****************/
+
+  event GroupProposalSubmitted(uint256 groupId, address[] proposedParticipants);
+
+  event UserParticipantionRegistered(uint256 groupId, address[] proposedParticipants, address[] confirmations, address[] cancellations);
+
+  event GroupProposalDeleted(uint256 groupId, address[] proposedParticipants, address[] confirmations, address[] cancellations);
+
+  event GroupCreated(uint256 groupId, address[] proposedParticipants, address[] confirmations, address[] cancellations);
+
+  event GroupDeleted(uint256 groupId, address[] participants);
+
+  /*************** LIBRARY FUNCTIONS ****************/
+
+  function getGroupIndex(uint256 groupId, uint256[] memory groups) private pure returns(uint8){
+    for(uint8 i = 0; i < groups.length; i++){
+      if(groupId == groups[i]) return i;
     }
-    return uint8(participants.length);
+    return uint8(groups.length);
   }
 
-  function removeParticipantByIndex(address[] memory participants, uint index) private pure returns(address[] memory) {
-        if (index >= participants.length) return participants;
+  function removeGroupByIndex(uint index, uint256[] memory groups) private pure returns(uint256[] memory) {
+        if (index >= groups.length) return groups;
 
-        address[] memory newParticipants = new address[](participants.length - 1);
-        for (uint8 i = 0; i < participants.length; i++){
-            if(i < index) newParticipants[i] = participants[i];
-            if(i > index) newParticipants[i - 1] = participants[i];
+        uint256[] memory newGroups = new uint256[](groups.length - 1);
+        for (uint8 i = 0; i < groups.length; i++){
+            if(i < index) newGroups[i] = groups[i];
+            if(i > index) newGroups[i - 1] = groups[i];
         }
-        delete participants;
-        return newParticipants;
+        return newGroups;
   }
-
-  event GroupProposalSubmitted(uint256 groupId, address[] participants);
-
-  event GroupConfirmationRegistered(uint256 groupId, address participant);
-
-  event GroupCreated(uint256 groupId, address[] participants);
-
-  event GroupProposalDeleted(uint256 groupId);
 }
