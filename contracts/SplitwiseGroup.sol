@@ -29,16 +29,19 @@ contract SplitwiseGroup {
 
   mapping(address => bool) addressLedger;
 
-  constructor() public {
-    deployer = msg.sender;
-  }
-
   modifier deployer_only {
     require(msg.sender == deployer, "Only the deployer of the contract can invoke its functions!");
     _;
   }
 
-  function registerGroupProposal(string calldata title, address[] calldata participants) external returns(uint256, address[] memory){
+  function init() external returns(address) {
+    require(deployer == address(0), "Not allowed");
+    deployer = msg.sender;
+    return deployer;
+  }
+
+  function registerGroupProposal(string calldata title, address[] calldata participants) deployer_only external
+    returns(uint256, address[] memory){
     require(participants.length >= 2);
     require(participants.length <= 50);
 
@@ -57,7 +60,7 @@ contract SplitwiseGroup {
     return(groupId, groupProposals[groupId].proposedParticipants);
   }
 
-  function submitUserParticipation(uint256 groupProposalId, bool confirmation) external
+  function submitUserParticipation(uint256 groupProposalId, bool confirmation) deployer_only external
     returns(uint256, address[] memory, address[] memory, address[] memory, bool, bool){
     //Checking that group proposal has not been discarded or transformed into a group already
     require(!groupProposals[groupProposalId].isRejected, "Already rejected group proposal");
@@ -68,7 +71,7 @@ contract SplitwiseGroup {
     return registerUserParticipation(groupProposalId, confirmation);
   }
 
-  function deleteGroup(uint256 groupId) external returns(address[] memory){
+  function deleteGroup(uint256 groupId) deployer_only external returns(address[] memory){
     groups[groupId].isDeleted = true;
     groups[groupId].isActive = false;
 

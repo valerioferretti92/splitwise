@@ -13,6 +13,11 @@ contract Splitwise {
     swGroup = SplitwiseGroup(splitwiseGroupAddress);
   }
 
+  function initSplitwiseGroup() external {
+    address deployer = swGroup.init();
+    emit SplitwiseGroupDeployerRegistered(deployer);
+  }
+
   function registerGroupProposal(string calldata title, address[] calldata desiredParticipants) external {
     uint256 groupProposalId;
     address[] memory participants;
@@ -93,7 +98,7 @@ contract Splitwise {
 
     for(uint8 i = 0; i < users.length; i++){
       index = getGroupIndex(groupProposalId, userGroupProposals[users[i]]);
-      if(index < userGroupProposals[users[i]])
+      if(index < userGroupProposals[users[i]].length)
         userGroupProposals[users[i]] = removeGroupByIndex(index, userGroupProposals[users[i]]);
     }
   }
@@ -105,6 +110,8 @@ contract Splitwise {
   }
 
   /*************** EVENTS ****************/
+
+  event SplitwiseGroupDeployerRegistered(address deployer);
 
   event GroupProposalSubmitted(uint256 groupId, address[] proposedParticipants);
 
