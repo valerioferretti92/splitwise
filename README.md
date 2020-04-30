@@ -11,3 +11,14 @@ The project is still in progress. For its implementation the following tools hav
 - **Ganache**, to mimick the blockchain infrastrucure
 - **The Truffle Suite** for compiling and deploying contracts on the Ganache blockchian node
 - **Solidity** v0.5.0 for SmartContract implementation
+
+## How to install dependencies
+
+- Ganache: https://github.com/trufflesuite/ganache
+- Truffle Suite: `sudo npm install --unsafe-perm -g truffle`
+
+## How to deploy
+
+- Launch Ganache application
+- Inside Ganache application: Settings > Add Project && Browse to get truffle-config.js > Save and restart
+- `cd splitwise && truffle compile && truffle migrate`
